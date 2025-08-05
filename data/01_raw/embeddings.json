@@ -1,0 +1,10 @@
+[
+  {
+    "text": "The quick brown fox jumps over the lazy dog.",
+    "embedding": [0.123, 0.456, 0.789, 0.101, 0.112]
+  },
+  {
+    "text": "Kedro is a Python framework for creating reproducible data pipelines.",
+    "embedding": [0.202, 0.303, 0.404, 0.505, 0.606]
+  }
+]

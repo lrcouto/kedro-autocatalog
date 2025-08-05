@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import re
 from llm_scripts import infer_kedro_dataset_type
 
 import yaml
@@ -16,21 +17,31 @@ EXT_TO_KEDRO_DATASET = {
 }
 
 
+TEXT_BASED_EXTENSIONS = {".csv", ".json", ".txt", ".yaml", ".yml", ".xml", ".md", ".log", ".py"}
+
+
 def scan_data_folder(data_dir: str = "data", use_llm: bool = True):
     entries = []
 
     for root, _, files in os.walk(data_dir):
         for file in files:
-            ext = Path(file).suffix.lower()
             full_path = os.path.join(root, file)
             rel_path = os.path.relpath(full_path, data_dir)
+
+            ext = Path(file).suffix.lower()
             dataset_type = EXT_TO_KEDRO_DATASET.get(ext)
 
             if use_llm and not dataset_type:
                 try:
-                    sample_lines = open(full_path).readlines()[:5]
-                    file_sample = "".join(sample_lines)
+                    if ext in TEXT_BASED_EXTENSIONS:
+                        with open(full_path, encoding="utf-8") as f:
+                            sample_lines = f.readlines()[:5]
+                        file_sample = "".join(sample_lines)
+                    else:
+                        file_sample = f"[binary file: {ext}]"
+
                     dataset_type = infer_kedro_dataset_type(file, file_sample)
+
                 except Exception as e:
                     print(f"[LLM Fallback Failed] {file}: {e}")
                     dataset_type = None

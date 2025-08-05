@@ -1,7 +1,23 @@
 from openai import OpenAI
 
-
 client = OpenAI()
+
+
+SYSTEM_PROMPT = """
+You are an expert in the Kedro framework.
+
+Always skip files that are clearly not datasets, such as (but not limited to):
+- .gitkeep
+- README files
+- timestamped folders (e.g. 2025-08-05T04.17.40.084Z)
+- Kedro versioned dataset subfolders
+
+These files are not actual data sources and should not be added to the catalog.
+
+Only respond with:
+- A single valid Kedro dataset class (like `pandas.CSVDataset`)
+- Or `SKIP` if the file should be ignored
+"""
 
 
 def infer_kedro_dataset_type(filename: str, file_sample: str) -> str:
@@ -63,24 +79,20 @@ def infer_kedro_dataset_type(filename: str, file_sample: str) -> str:
         "text.TextDataset",
         "yaml.YAMLDataset"
 
-    ### Instructions:
-    - If the file looks like a real data file (text, structured, binary, etc), return the most appropriate Kedro dataset class (e.g. `text.TextDataset`) on a single line.
-    - If the file clearly isn't data (e.g. .gitkeep, README, etc), return `SKIP`.
+    Return only the Kedro dataset class or `SKIP`.
 
-    Do not include explanations. Return only the class name or `SKIP`.
-
-    ---
     Filename: {filename}
-
     Sample content:
     {file_sample}
-    ---
     """
 
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.2,
     )
 
     result = response.choices[0].message.content.strip()

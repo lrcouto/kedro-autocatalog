@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-import re
 from llm_scripts import infer_kedro_dataset_type
 
 import yaml
@@ -86,6 +85,23 @@ def write_catalog_to_yaml(catalog_dict: dict, output_path: str = "conf/base/auto
                 f.write("\n")
 
 
-file_info = scan_data_folder()
-catalog_dict = to_catalog_entries(file_info)
-write_catalog_to_yaml(catalog_dict)
+def update_auto_catalog(
+    data_dir: str = "data",
+    catalog_output: str = "conf/base/auto_catalog.yml",
+    use_llm: bool = True,
+) -> str:
+    """
+    Scans the data directory, infers dataset types, and updates the Kedro catalog.
+
+    Args:
+        data_dir: Path to the data directory.
+        catalog_output: Output YAML path for the catalog entries.
+        use_llm: Whether to use LLM for type inference if extension is unknown.
+
+    Returns:
+        The path to the generated catalog file.
+    """
+    file_info = scan_data_folder(data_dir=data_dir, use_llm=use_llm)
+    catalog_dict = to_catalog_entries(file_info)
+    write_catalog_to_yaml(catalog_dict, output_path=catalog_output)
+    return catalog_output

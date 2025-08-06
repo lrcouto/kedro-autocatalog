@@ -13,28 +13,46 @@ def format_context_for_llm(context_dict: dict[str, str]) -> str:
 
 
 def build_prompt(suggestions: List[CatalogEntrySuggestion], context_md: str | None) -> List[dict]:
-    intro_lines = [
-        "You are a Kedro expert. Based on the file paths and names below, suggest the most likely Kedro dataset type.",
-        "Only suggest valid Kedro dataset class names (like `pandas.CSVDataset`, `pandas.ParquetDataset`, `json.JSONDataset`, `PickleDataset`, `ImageDataset`, `TextDataset`, etc).",
-        "You MUST give a response for every entry — if you're unsure, make your best educated guess.",
-        "Ignore entries that look like versioning metadata (e.g. `dataset_name/version.txt`, `.ipynb_checkpoints/`, `._SUCCESS`, `_versions`, etc). These are not datasets.",
-        "",
-        "Input format: name: filepath",
-        "Output format: name: suggested_type",
-        ""
-    ]
-    for s in suggestions:
-        intro_lines.append(f"{s.suggested_name}: {s.filepath}")
+    dataset_lines = [f"{s.suggested_name}: {s.filepath}" for s in suggestions]
+    dataset_block = "\n".join(dataset_lines)
 
-    messages = [{"role": "system", "content": "\n".join(intro_lines)}]
+    instructions = [
+        "You are a Kedro expert.",
+        "Your task is to infer the most appropriate Kedro dataset type for each dataset listed below.",
+        "",
+        "Use the source code context to help guide your choices.",
+        "Prioritize evidence from code (e.g., how a dataset is loaded, used, or saved).",
+        "If no relevant code is found, fall back to the file extension and naming heuristics.",
+        "",
+        "Ignore versioning metadata or non-datasets (e.g. `.ipynb_checkpoints/`, `_versions/`, `dataset_name/version.txt`, etc).",
+        "",
+        "Only suggest **valid** Kedro dataset class names (e.g. `pandas.CSVDataset`, `pandas.ParquetDataset`, `json.JSONDataset`, `PickleDataset`, `ImageDataset`, `TextDataset`, etc).",
+        "",
+        "You MUST respond with a dataset type for every entry — even if you're unsure, make your best guess.",
+        "",
+        "Dataset entries:",
+        dataset_block,
+    ]
 
     if context_md:
-        messages.append({
-            "role": "user",
-            "content": "Here is some project source code context that may help you decide:\n\n" + context_md
-        })
+        instructions += [
+            "",
+            "Source code context:",
+            context_md,
+        ]
 
-    return messages
+    instructions += [
+        "",
+        "Respond in this format only:",
+        "dataset_name: DatasetType",
+        "",
+        "Do not explain your choices. Just output the name-to-type mapping.",
+    ]
+
+    return [
+        {"role": "system", "content": "You are a helpful assistant that understands the Kedro data catalog and pipelines."},
+        {"role": "user", "content": "\n".join(instructions)}
+    ]
 
 
 def parse_llm_response(content: str) -> dict[str, str | None]:

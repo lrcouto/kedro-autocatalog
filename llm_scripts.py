@@ -14,7 +14,6 @@ def infer_dataset_types(suggestions: List[CatalogEntrySuggestion]) -> List[Catal
     prompt_lines = [
         "You are a Kedro expert. Based on the file paths and names below, suggest the most likely Kedro dataset type.",
         "Only suggest valid Kedro dataset class names (like `pandas.CSVDataset`, `pandas.ExcelDataset`, `json.JSONDataset`, `PickleDataset`, `ImageDataset`, etc).",
-        "If you can’t determine with confidence, reply with `null`.",
         "",
         "Input format: name: filepath",
         "Example output format: name: suggested_type",

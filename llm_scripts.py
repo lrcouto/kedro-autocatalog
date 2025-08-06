@@ -26,7 +26,7 @@ def build_prompt(suggestions: List[CatalogEntrySuggestion], context_md: str | No
         "",
         "Ignore versioning metadata or non-datasets (e.g. `.ipynb_checkpoints/`, `_versions/`, `dataset_name/version.txt`, etc).",
         "",
-        "Only suggest **valid** Kedro dataset class names (e.g. `pandas.CSVDataset`, `pandas.ParquetDataset`, `json.JSONDataset`, `PickleDataset`, `ImageDataset`, `TextDataset`, etc).",
+        "Only suggest **valid** Kedro dataset class names (e.g. `pandas.CSVDataset`, `pandas.ParquetDataset`, `json.JSONDataset`, `pickle.PickleDataset`, etc).",
         "",
         "You MUST respond with a dataset type for every entry — even if you're unsure, make your best guess.",
         "",
@@ -44,7 +44,7 @@ def build_prompt(suggestions: List[CatalogEntrySuggestion], context_md: str | No
     instructions += [
         "",
         "Respond in this format only:",
-        "dataset_name: DatasetType",
+        "dataset_name: dataset.DatasetType",
         "",
         "Do not explain your choices. Just output the name-to-type mapping.",
     ]

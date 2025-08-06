@@ -161,6 +161,23 @@ def write_catalog_to_yaml(catalog_dict: dict, output_path: str = "conf/base/auto
                 f.write("\n")
 
 
+def get_node_pipeline_source_code(src_root: str = "src") -> dict[str, str]:
+    """
+    Search for and read relevant Kedro source files such as nodes.py and pipeline.py.
+    
+    Returns a mapping: { "relative/path/to/file": file_content }
+    """
+    relevant_files = {}
+    for path in Path(src_root).rglob("*.py"):
+        if path.name in {"nodes.py", "pipeline.py"}:
+            try:
+                relative_path = str(path.relative_to(src_root))
+                relevant_files[relative_path] = path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Skipping {path}: {e}")
+    return relevant_files
+
+
 def update_auto_catalog():
     scanned_datafile: List[ScannedDataFile] = scan_data_folder()
     observed_project: ObservedProject = observe_project(scanned_datafile)

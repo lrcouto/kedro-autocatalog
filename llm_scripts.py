@@ -1,51 +1,99 @@
 from openai import OpenAI
-from tool_scripts import CatalogEntrySuggestion
+from tool_scripts import CatalogEntrySuggestion, get_node_pipeline_source_code
 from typing import List
 
 client = OpenAI()
 
 
-def infer_dataset_types(suggestions: List[CatalogEntrySuggestion]) -> List[CatalogEntrySuggestion]:
-    entries_to_infer = [s for s in suggestions if s.suggested_type is None]
-
-    if not entries_to_infer:
-        return suggestions  # Nothing to infer
-
-    prompt_lines = [
-        "You are a Kedro expert. Based on the file paths and names below, suggest the most likely Kedro dataset type.",
-        "Only suggest valid Kedro dataset class names (like `pandas.CSVDataset`, `pandas.ExcelDataset`, `json.JSONDataset`, `PickleDataset`, `ImageDataset`, etc).",
-        "",
-        "Input format: name: filepath",
-        "Example output format: name: suggested_type",
-        ""
-    ]
-
-    for s in entries_to_infer:
-        prompt_lines.append(f"{s.suggested_name}: {s.filepath}")
-
-    system_prompt = "\n".join(prompt_lines)
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-        ],
-        temperature=0.2
+def format_context_for_llm(context_dict: dict[str, str]) -> str:
+    return "\n\n".join(
+        f"# {file}\n```python\n{content.strip()}\n```"
+        for file, content in context_dict.items()
     )
 
-    reply = response.choices[0].message.content.strip()
 
+def build_prompt(suggestions: List[CatalogEntrySuggestion], context_md: str | None) -> List[dict]:
+    intro_lines = [
+        "You are a Kedro expert. Based on the file paths and names below, suggest the most likely Kedro dataset type.",
+        "Only suggest valid Kedro dataset class names (like `pandas.CSVDataset`, `pandas.ParquetDataset`, `json.JSONDataset`, `PickleDataset`, `ImageDataset`, `TextDataset`, etc).",
+        "You MUST give a response for every entry — if you're unsure, make your best educated guess.",
+        "Ignore entries that look like versioning metadata (e.g. `dataset_name/version.txt`, `.ipynb_checkpoints/`, `._SUCCESS`, `_versions`, etc). These are not datasets.",
+        "",
+        "Input format: name: filepath",
+        "Output format: name: suggested_type",
+        ""
+    ]
+    for s in suggestions:
+        intro_lines.append(f"{s.suggested_name}: {s.filepath}")
+
+    messages = [{"role": "system", "content": "\n".join(intro_lines)}]
+
+    if context_md:
+        messages.append({
+            "role": "user",
+            "content": "Here is some project source code context that may help you decide:\n\n" + context_md
+        })
+
+    return messages
+
+
+def parse_llm_response(content: str) -> dict[str, str | None]:
     type_map = {}
-    for line in reply.splitlines():
-        if not line.strip() or ":" not in line:
+    for line in content.strip().splitlines():
+        if ":" not in line:
             continue
         name, dataset_type = line.split(":", 1)
-        name = name.strip()
-        dataset_type = dataset_type.strip()
-        type_map[name] = dataset_type if dataset_type != "null" else None
+        type_map[name.strip()] = dataset_type.strip()
+    return type_map
 
+
+def is_noise_file(s: CatalogEntrySuggestion) -> bool:
+    # Add filters for files that should NOT be treated as datasets
+    noise_indicators = [
+        "_versions", "version", "checkpoint", "SUCCESS", ".ipynb_checkpoints",
+        ".DS_Store", "._", ".trash", "metadata", ".log"
+    ]
+    path = s.filepath.lower()
+    return any(part in path for part in noise_indicators)
+
+
+def infer_dataset_types(
+    suggestions: List[CatalogEntrySuggestion],
+    verbose: bool = True
+) -> List[CatalogEntrySuggestion]:
+    def log(msg: str):
+        if verbose:
+            print(msg)
+
+    context_dict = get_node_pipeline_source_code()
+    context_md = format_context_for_llm(context_dict)
+
+    unresolved = suggestions.copy()
+    final_results: dict[str, str] = {}
+
+    # 🔍 Attempt with context immediately
+    log("🔍 Attempting with source code context from the start...")
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=build_prompt(unresolved, context_md=context_md),
+        temperature=0.2,
+    )
+    first_pass = parse_llm_response(response.choices[0].message.content)
+
+    for s in unresolved:
+        result = first_pass.get(s.suggested_name)
+        if not result or result.lower() in {"unknown", "?", "none", "unsure", "null"}:
+            log(f"  - ⚠️ LLM returned uncertain value for `{s.suggested_name}`, but keeping it anyway.")
+        else:
+            log(f"  - ✅ Resolved: {s.suggested_name} → {result}")
+        final_results[s.suggested_name] = result
+
+    # Apply final results
     for s in suggestions:
-        if s.suggested_name in type_map and s.suggested_type is None:
-            s.suggested_type = type_map[s.suggested_name]
+        s.suggested_type = final_results.get(s.suggested_name)
+
+    log(f"\n🏁 Final dataset type mapping:")
+    for s in suggestions:
+        log(f"  - {s.suggested_name}: {s.suggested_type}")
 
     return suggestions

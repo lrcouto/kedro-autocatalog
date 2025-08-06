@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 from llm_scripts import infer_kedro_dataset_type
+from pydantic import BaseModel
+from typing import List, Set
 
 import yaml
 
@@ -17,6 +19,22 @@ EXT_TO_KEDRO_DATASET = {
 
 
 TEXT_BASED_EXTENSIONS = {".csv", ".json", ".txt", ".yaml", ".yml", ".xml", ".md", ".log", ".py"}
+
+
+class DataFile(BaseModel):
+    full_path: str
+    rel_path: str
+    ext: str
+
+
+class ObservedProject(BaseModel):
+    data_files: List[DataFile]
+
+
+class AnalysisResult(BaseModel):
+    versioned_files: List[str]
+    uncatalogued_files: List[str]
+    possible_models: List[str]
 
 
 def scan_data_folder(data_dir: str = "data", use_llm: bool = True):
@@ -105,3 +123,49 @@ def update_auto_catalog(
     catalog_dict = to_catalog_entries(file_info)
     write_catalog_to_yaml(catalog_dict, output_path=catalog_output)
     return catalog_output
+
+
+def observe_project(data_dir: str = "data") -> dict:
+    files = []
+
+    for root, _, file_names in os.walk(data_dir):
+        for file in file_names:
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, data_dir)
+            ext = Path(file).suffix.lower()
+
+            files.append({
+                "full_path": full_path,
+                "rel_path": rel_path,
+                "ext": ext,
+            })
+
+    return ObservedProject(data_files=files)
+
+
+def analyze_observed_project(project: ObservedProject) -> AnalysisResult:
+    versioned = []
+    uncatalogued = []
+    models = []
+
+    for f in project.data_files:
+        is_versioned = (
+            f.rel_path.count("/") >= 2 and 
+            f.rel_path.split("/")[-2].startswith("20")
+        )
+        is_model = f.ext in {".pickle", ".joblib", ".pkl", ".pt", ".pth"}
+
+        if is_versioned:
+            versioned.append(f.rel_path)
+
+        if is_model:
+            models.append(f.rel_path)
+
+        if not is_versioned and not is_model:
+            uncatalogued.append(f.rel_path)
+
+    return AnalysisResult(
+        versioned_files=versioned,
+        uncatalogued_files=uncatalogued,
+        possible_models=models,
+    )

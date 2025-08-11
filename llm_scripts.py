@@ -1,5 +1,6 @@
+from pathlib import Path
 from openai import OpenAI
-from tool_scripts import CatalogEntrySuggestion, get_node_pipeline_source_code
+from models import CatalogEntrySuggestion
 from typing import List
 
 client = OpenAI()
@@ -10,6 +11,18 @@ def format_context_for_llm(context_dict: dict[str, str]) -> str:
         f"# {file}\n```python\n{content.strip()}\n```"
         for file, content in context_dict.items()
     )
+
+
+def get_node_pipeline_source_code(src_root: str = "src") -> dict[str, str]:
+    relevant_files = {}
+    for path in Path(src_root).rglob("*.py"):
+        if path.name in {"nodes.py", "pipeline.py"}:
+            try:
+                relative_path = str(path.relative_to(src_root))
+                relevant_files[relative_path] = path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Skipping {path}: {e}")
+    return relevant_files
 
 
 def build_prompt(suggestions: List[CatalogEntrySuggestion], context_md: str | None) -> List[dict]:
